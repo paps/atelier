@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# From the host, open zsh in the running Podman container matching this repo.
+# Refuse to enter if the match is missing or ambiguous.
+set -euo pipefail
+
+die() { printf 'zsh-in: %s\n' "$*" >&2; exit 1; }
+
+(( $# == 0 )) || die 'Usage: .devcontainer/zsh-in (run from inside the repository)'
+if [[ -e /run/.containerenv || -e /.dockerenv || -n ${container:-} ]] ||
+	{ command -v systemd-detect-virt >/dev/null && systemd-detect-virt --container --quiet; }; then
+	die 'Run this on the host, not from inside a container.'
+fi
+[[ -t 0 && -t 1 ]] || die 'An interactive terminal is required.'
+command -v git >/dev/null || die 'git is not installed or is not on PATH.'
+command -v podman >/dev/null || die 'podman is not installed or is not on PATH.'
+
+repo_root=$(git rev-parse --show-toplevel) || die 'Cannot determine the current repository.'
+repo_name=${repo_root##*/}
+[[ -n $repo_name ]] || die 'Cannot determine the repository name.'
+
+# Match literally, like grep -F, but only consider running containers.
+containers=$(podman ps --filter status=running --no-trunc \
+	--format '{{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Command}}') || die 'Cannot list Podman containers.'
+ids=()
+matches=()
+while IFS=$'\t' read -r id details; do
+	if [[ -n $id && $details == *"$repo_name"* ]]; then
+		[[ $id =~ ^[0-9a-f]{64}$ ]] || die 'Podman returned an invalid container ID.'
+		ids+=("$id")
+		matches+=("$id $details")
+	fi
+done <<< "$containers"
+
+case ${#ids[@]} in
+	0) die "No running Podman container matches repository '$repo_name'." ;;
+	1) exec podman exec -it "${ids[0]}" zsh ;;
+	*) printf 'Matching containers:\n%s\n' "${matches[@]}" >&2
+		die "Multiple running containers match '$repo_name'; cannot choose safely." ;;
+esac

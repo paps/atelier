@@ -1,0 +1,38 @@
+{
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  // Do this in case we're in a GH codespace or somehow forgot to create the .env file
+  // so that runArgs below works in all cases, albeit with no additional env loaded.
+  // Capture the host hostname here; inside the container, hostname identifies the container.
+  "initializeCommand": "touch .devcontainer/.env && chmod 0600 .devcontainer/.env && hostname -s > .devcontainer/.host-hostname",
+
+  "runArgs": [
+    // Make the dev container join the gluetun's network namespace, the goal
+    // being to force any network traffic through wireguard for analysis
+    // Leaving this commented for now, might use later to force traffic through an inspection proxy
+    //"--network=container:gluetun",
+
+    // Load the vars needed for execution of setup.sh and beyond
+    "--env-file",
+    "${localWorkspaceFolder}/.devcontainer/.env",
+
+    "--publish",
+    "41642:41642/udp"
+  ],
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "bash .devcontainer/postStart.sh",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "dev.containers.dockerCredentialHelper": false,
+        "dev.containers.copyGitConfig": false,
+        "dev.containers.gitCredentialHelperConfigLocation": "none",
+        "dev.containers.mountWaylandSocket": false
+      }
+    }
+  }
+}
