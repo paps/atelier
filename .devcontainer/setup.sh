@@ -10,8 +10,17 @@ if [[ "${CODESPACES:-}" != "true" ]]; then
 	#sudo cp mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitm.crt
 	#sudo update-ca-certificates
 
-	# Use gh as a git credential helper
-	# (will work as long as our env has a valid GH_TOKEN)
+	# Save the container's GitHub token so SSH sessions (including VS Code agents)
+	# can authenticate even when they don't inherit GH_TOKEN. gh auth login refuses
+	# to save credentials while a token environment variable is set, so pass the
+	# token through stdin with --with-token and unset those variables only for gh.
+	# The setup script keeps its environment. Credentials are stored for the current
+	# user, in a plain text config file if no system credential store is available.
+	printf '%s\n' "${GH_TOKEN:?GH_TOKEN must be set}" |
+		env -u GH_TOKEN -u GITHUB_TOKEN \
+		gh auth login --hostname github.com --git-protocol https --with-token
+
+	# Use gh as a git credential helper, with the environment token or saved login.
 	gh auth setup-git
 
 	# Set our git name and email based on what GitHub returns
