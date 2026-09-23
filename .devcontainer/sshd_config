@@ -1,0 +1,4 @@
+# Keep port 22 available for optional Tailscale SSH.
+Port 2222
+PasswordAuthentication no
+PermitRootLogin no

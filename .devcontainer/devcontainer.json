@@ -3,6 +3,11 @@
     "dockerfile": "Dockerfile"
   },
 
+  // Preserve the image's entrypoint and CMD instead of the CLI's keep-alive command.
+  "overrideCommand": false,
+  // Use the runtime's small init process to reap orphans and forward shutdown signals.
+  "init": true,
+
   // Do this in case we're in a GH codespace or somehow forgot to create the .env file
   // so that runArgs below works in all cases, albeit with no additional env loaded.
   "initializeCommand": "touch .devcontainer/.env && chmod 0600 .devcontainer/.env",
@@ -17,12 +22,13 @@
     "--env-file",
     "${localWorkspaceFolder}/.devcontainer/.env",
 
+    // Foward the custom port we set for tailscale to help tailscale properly route
+    // traffic, e.g. in between the container and the host
     "--publish",
     "41642:41642/udp"
   ],
 
   "postCreateCommand": "bash .devcontainer/setup.sh",
-  "postStartCommand": "bash .devcontainer/postStart.sh",
 
   "customizations": {
     "vscode": {
