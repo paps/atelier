@@ -5,8 +5,7 @@
 
   // Do this in case we're in a GH codespace or somehow forgot to create the .env file
   // so that runArgs below works in all cases, albeit with no additional env loaded.
-  // Capture the host hostname here; inside the container, hostname identifies the container.
-  "initializeCommand": "touch .devcontainer/.env && chmod 0600 .devcontainer/.env && hostname -s > .devcontainer/.host-hostname",
+  "initializeCommand": "touch .devcontainer/.env && chmod 0600 .devcontainer/.env",
 
   "runArgs": [
     // Make the dev container join the gluetun's network namespace, the goal

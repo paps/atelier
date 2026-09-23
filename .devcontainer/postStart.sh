@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start Tailscale on each devcontainer start and name it {HOST}-atelier
+# Start Tailscale on each devcontainer start.
 set -euo pipefail
 
 if (( EUID != 0 )); then
@@ -7,9 +7,6 @@ if (( EUID != 0 )); then
 fi
 
 command -v tailscaled tailscale >/dev/null
-read -r host_hostname < "$(dirname "${BASH_SOURCE[0]}")/.host-hostname"
-: "${host_hostname:?Host hostname is empty; rerun the devcontainer initializeCommand}"
-tailscale_hostname="${host_hostname}-atelier"
 mkdir -p /var/lib/tailscale /run/tailscale
 
 # Keep the daemon running after the lifecycle command exits.
@@ -24,8 +21,7 @@ fi
 # JSON status succeeds even before login; wait for the daemon, not authentication.
 for (( attempt = 0; attempt < 50; attempt++ )); do
 	if tailscale --socket=/run/tailscale/tailscaled.sock status --json >/dev/null 2>&1; then
-		tailscale --socket=/run/tailscale/tailscaled.sock set --hostname="$tailscale_hostname"
-		printf 'Tailscale daemon is ready. To log in and enable SSH, run: sudo tailscale up --ssh --hostname=%q\n' "$tailscale_hostname"
+		printf 'Tailscale daemon is ready. To log in and enable SSH, run: sudo tailscale up --ssh\n'
 		exit 0
 	fi
 	sleep 0.2
