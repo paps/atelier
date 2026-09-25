@@ -12,20 +12,26 @@ Tailscale and some harnesses come pre-installed, so once the `atelier` container
 
 [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/) supports Ubuntu
 24.04+ with KVM and membership in the `kvm` group; Docker Desktop and Docker Engine
-are not required on the host. Checked against stable `sbx v0.45.1` on 2026-09-24.
+are not required on the host. Checked against stable `sbx v0.45.1` on 2026-09-25.
 
 For a headless host, sign in with a Docker access token through stdin:
 
 ```sh
 sbx login
 sbx policy init allow-all # One-time setup if no network preset is configured.
+sbx settings set ssh.agentForwardingEnabled false
+sbx daemon restart # Applies the agent forwarding setting.
 sbx diagnostics
 ```
+
+By default, `sbx` forwards the host's SSH agent into sandboxes, which lets any
+process inside use the host's SSH keys. The setting above turns that off for all
+sandboxes.
 
 From this repository's root, create the VM without attaching:
 
 ```sh
-sbx create --name atelier codex --kit ./sbx-kit
+sbx create --name atelier codex --kit ./atelier-sbx-kit
 ```
 
 For direct Tailscale connections, enable experimental outbound UDP and explicitly
@@ -48,8 +54,9 @@ For an interactive shell instead, use `sbx exec -it atelier zsh`.
 
 No host workspace is mounted. Docker's built-in Codex sandbox manages Codex
 installation and authentication. The local v2 mixin in
-[`sbx-kit`](sbx-kit/spec.yaml) installs dotfiles, Tailscale, and OpenSSH
-server, in that order. The dotfiles installer already updates package lists.
+[`atelier-sbx-kit`](atelier-sbx-kit/spec.yaml) installs dotfiles, Tailscale, and OpenSSH
+server, in that order, then wires the sandbox environment into zsh and SSH logins
+(see below). The dotfiles installer already updates package lists.
 The kit does not declare network permissions; use the host's `allow-all` preset
 and the UDP rule above for open outbound access. Explicit deny rules and organization policies
 still take precedence; see
@@ -62,12 +69,30 @@ and stores its identity in `/var/lib/tailscale/tailscaled.state`, so login survi
 restarts of the same sandbox. Authenticate once from its shell with
 `sudo tailscale up`.
 
-The startup scripts and SSH configuration are inline in `sbx-kit/spec.yaml`.
-OpenSSH listens on port **2222**, with password authentication and root login
-disabled, matching the devcontainer. If `/home/agent/.ssh/authorized_keys` is
-missing, startup downloads the public keys from `https://github.com/paps.keys`
-and installs them for the `agent` user. Existing authorized keys are left intact.
-Both daemons send their output through the sandbox's startup logging.
+The startup scripts and SSH configuration are inline in `atelier-sbx-kit/spec.yaml`.
+OpenSSH listens on port **2222**, with password authentication, root login, and
+agent and X11 forwarding disabled, matching the devcontainer. The `agent` user
+has passwordless sudo, so code inside the sandbox could re-enable forwarding;
+disable it for this host in your SSH client configuration instead, with
+`ForwardAgent no` and `ForwardX11 no`.
+
+If `/home/agent/.ssh/authorized_keys` is missing, startup downloads the public
+keys from `https://github.com/paps.keys` and installs them for the `agent` user.
+Existing authorized keys are left intact. Both daemons send their output through
+the sandbox's startup logging.
+
+`sbx` gives its environment only to processes it starts: proxy settings, CA
+bundle paths, credential sentinels that the host proxy swaps for real secrets,
+and a `PATH` that includes Codex. OpenSSH starts each login with a clean
+environment instead. Until `sbx` handles this, the kit works around it. Before
+starting OpenSSH, the startup hook snapshots the container environment from PID 1
+into `/run/ssh-login-env.sh`, leaving out per-login variables and SSH agent
+sockets. `/etc/sandbox-persistent.sh`, which Docker's template loads in bash,
+imports the snapshot into logins that lack `SANDBOX_ID`; the kit also loads that
+file from `/etc/zsh/zshenv`. SSH sessions, including `ssh host command`, then
+match `sbx exec`. The snapshot is rewritten on every sandbox start. In
+`atelier-sbx-kit/spec.yaml`, this workaround sits between `BEGIN ssh-env workaround` and
+`END ssh-env workaround` comments.
 
 These hooks start the daemons but do not restart them if they crash. Remote access
 routing still needs configuration; starting both daemons
@@ -78,7 +103,7 @@ Codex uses the host's stored OpenAI OAuth secret through the sandbox proxy.
 If you haven't stored it yet, run `sbx secret set openai --oauth` on the host.
 The local kit does not declare credentials or write Codex configuration.
 
-Optionally validate the kit with `sbx kit validate ./sbx-kit`.
+Optionally validate the kit with `sbx kit validate ./atelier-sbx-kit`.
 [Kits](https://docs.docker.com/ai/sandboxes/customize/kit-reference/) are
 experimental. Applying kit changes requires recreating the sandbox; doing so
 discards its installed state and any files stored inside it.

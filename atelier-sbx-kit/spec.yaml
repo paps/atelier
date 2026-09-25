@@ -1,0 +1,130 @@
+schemaVersion: "2"
+
+kind: mixin
+
+name: atelier-sbx-kit
+
+setup:
+
+  install:
+    # Install dotfiles into /home/agent; sudo is available for apt.
+    # The dotfiles installer already updates package lists.
+    - user: "1000"
+      command: |
+        bash -euo pipefail <<'INSTALL'
+        curl -fsSL 'https://raw.githubusercontent.com/paps/dotfiles/refs/heads/master/min-setup-via-curl.sh' | bash
+        curl -fsSL https://tailscale.com/install.sh | sh
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server
+
+        # BEGIN ssh-env workaround
+        # Tricks to make SSH logins work for now, until sbx supports them. sbx gives
+        # its environment (proxy settings, credential sentinels, PATH) only to
+        # processes it starts, and Docker's template loads /etc/sandbox-persistent.sh
+        # only in bash. Remove together with the matching block in the sshd startup
+        # hook below.
+
+        # Load /etc/sandbox-persistent.sh in zsh too, in sh emulation because the
+        # file is written for sh.
+        sudo tee -a /etc/zsh/zshenv >/dev/null <<'ZSHENV'
+
+        # ssh-env workaround: load the Docker Sandbox shell environment, as bash does.
+        [[ -r /etc/sandbox-persistent.sh ]] && emulate sh -c '. /etc/sandbox-persistent.sh'
+        ZSHENV
+
+        # Logins that sandboxd doesn't start, such as OpenSSH sessions, lack the
+        # sandbox environment. Import the snapshot written by the sshd startup hook.
+        cat >> /etc/sandbox-persistent.sh <<'PERSISTENT'
+
+        # ssh-env workaround: import the sandbox environment into logins that lack it.
+        if [ -z "${SANDBOX_ID-}" ] && [ -r /run/ssh-login-env.sh ]; then
+            . /run/ssh-login-env.sh
+        fi
+        PERSISTENT
+        # END ssh-env workaround
+        INSTALL
+
+  startup:
+    - user: "0"
+      background: true
+      command:
+        - bash
+        # -e: exit on an unhandled command failure; -u: fail on unset variables;
+        # -c: execute the following string as a shell script.
+        - -euc
+        - |
+          # BEGIN ssh-env workaround
+          # Tricks to make SSH logins work for now; see the matching block in the
+          # install step. This block needs bash; the rest of this script is POSIX sh.
+          # Snapshot the sandbox environment on every start, before sshd accepts
+          # logins; /etc/sandbox-persistent.sh imports it into SSH sessions.
+          # PID 1 holds the container environment: proxy settings, CA paths,
+          # credential sentinels, and PATH. Skip variables each login sets for
+          # itself, and SSH agent sockets, which reach the host's agent.
+          env_file=$(mktemp /run/ssh-login-env.XXXXXX)
+          trap 'rm -f "$env_file"' EXIT
+          # Single-quote each value; close, escape, and reopen around embedded quotes.
+          quote="'\\''"
+          # -r: keep backslashes; -d '': read NUL-terminated entries.
+          while IFS= read -r -d '' entry; do
+            name=${entry%%=*}
+            value=${entry#*=}
+            case $name in
+              HOME|USER|LOGNAME|SHELL|MAIL|TERM|PWD|OLDPWD|SHLVL|_|SSH_*) continue ;;
+            esac
+            [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+            printf "export %s='%s'\n" "$name" "${value//\'/$quote}"
+          done < /proc/1/environ > "$env_file"
+          chmod 0644 "$env_file"
+          mv -f "$env_file" /run/ssh-login-env.sh
+          trap - EXIT
+          # END ssh-env workaround
+
+          pgrep -x sshd >/dev/null && exit 0
+
+          mkdir -p /run/sshd /etc/ssh/sshd_config.d
+          cat > /etc/ssh/sshd_config.d/remote-access.conf <<'CONFIG'
+          # Keep port 22 available for optional Tailscale SSH.
+          Port 2222
+          PasswordAuthentication no
+          PermitRootLogin no
+          # Refuse agent and X11 forwarding, which expose the client to the sandbox.
+          # Not a security boundary: the user is a sudoer and can re-enable
+          # them. Disable forwarding on the connecting client instead
+          # (ForwardAgent no, ForwardX11 no).
+          AllowAgentForwarding no
+          X11Forwarding no
+          CONFIG
+
+          # Initialize authorized keys only when the file is missing.
+          if [ ! -f /home/agent/.ssh/authorized_keys ]; then
+            keys_file=$(mktemp)
+            trap 'rm -f "$keys_file"' EXIT
+            curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 30 https://github.com/paps.keys -o "$keys_file"
+            # -l: show key fingerprints (validates the download); -f: read this file.
+            ssh-keygen -lf "$keys_file" >/dev/null
+            agent_group=$(id -gn agent)
+            install -d -m 0700 -o agent -g "$agent_group" /home/agent/.ssh
+            install -m 0600 -o agent -g "$agent_group" "$keys_file" /home/agent/.ssh/authorized_keys
+            rm -f "$keys_file"
+            trap - EXIT
+          fi
+
+          # -A: generate any missing default SSH host keys; preserve existing ones.
+          ssh-keygen -A
+
+          # -D: stay in the foreground; -e: write logs to stderr instead of syslog.
+          exec /usr/sbin/sshd -D -e
+
+    - user: "0"
+      background: true
+      command:
+        - sh
+        # -e: exit on an unhandled command failure; -u: fail on unset variables;
+        # -c: execute the following string as a shell script.
+        - -euc
+        - |
+          pgrep -x tailscaled >/dev/null && exit 0
+
+          mkdir -p /run/tailscale
+          install -d -m 0700 /var/lib/tailscale
+          exec tailscaled --tun=userspace-networking --port=41643 --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock

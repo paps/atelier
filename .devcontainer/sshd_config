@@ -2,3 +2,9 @@
 Port 2222
 PasswordAuthentication no
 PermitRootLogin no
+# Refuse agent and X11 forwarding, which expose the client to the container.
+# Not a security boundary: the container's user is a sudoer and can re-enable them.
+# Disable forwarding on the connecting client instead
+# (ForwardAgent no, ForwardX11 no).
+AllowAgentForwarding no
+X11Forwarding no
