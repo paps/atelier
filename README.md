@@ -22,6 +22,8 @@ sbx daemon restart # Applies the agent forwarding setting.
 sbx diagnostics
 ```
 
+The kit sets up git as the account of a stored GitHub secret, so store one before creating the sandbox: `sbx secret set github` (add `--sandbox atelier` to use it for this sandbox only).
+
 From this repository's root, create the VM without attaching:
 
 ```sh

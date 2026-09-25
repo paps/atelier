@@ -13,6 +13,15 @@ setup:
       command: |
         bash -euo pipefail <<'INSTALL'
         curl -fsSL 'https://raw.githubusercontent.com/paps/dotfiles/refs/heads/master/min-setup-via-curl.sh' | bash
+
+        # Git over HTTPS through gh, as the account of the sandbox's GitHub secret,
+        # which must exist before creation. We assign to a var first so that the install
+        # fails if the token doesn't work.
+        gh auth setup-git
+        git_name=$(gh api user --jq '.name // .login')
+        git_email=$(gh api user --jq '"\(.id)+\(.login)@users.noreply.github.com"')
+        git config --global user.name "$git_name"
+        git config --global user.email "$git_email"
         curl -fsSL https://tailscale.com/install.sh | sh
         sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server
 
