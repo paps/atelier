@@ -1,12 +1,12 @@
 # Atelier
 
-This repo stores useful configuration for creating sandboxes for agents. I find that I generally only need about ~one sandbox per machine, into which any number of projects can be worked on simultaneously.
+This repo stores useful configuration for creating containers or sandboxes for agents. I find that I generally only need about ~one container or sandbox per machine, into which any number of projects can be worked on simultaneously.
+
+Repos that we want to work on are meant to be cloned in the `bay` directory. This directory is then meant to be mounted onto the container or sandbox.
 
 ![Atelier](docs/atelier.jpg)
 
 ## Dev containers
-
-When using a dev container, repos are meant to be cloned in the `bay` directory.
 
 Tailscale and some harnesses come pre-installed, so once the container is created/recreated, users only have to `sudo tailscale up`, start the harnesses of their choice to log in, and clone repos in `bay`. The container is then ready for isolated work through SSH, whether it is `tmux`, VSCode Agents window, or any other ADE-type software.
 
@@ -29,7 +29,7 @@ sbx login
 # Note: For Debian, it seems the daemon doesn't go in the background, which is also fine
 sbx daemon start # or 'restart'
 
-sbx policy init allow-all # Let's do that for now, might restrict more later
+sbx policy reset # Interactively configure network access. Just use 'Open' for now
 # Allow this for tailscale (see below)
 sbx settings set platform.allowExperimentalFeatures true
 sbx settings set feature.udp-egress true
@@ -48,7 +48,7 @@ sbx diagnostics
 
 The kit sets up git as the account of a stored GitHub secret, so store one before creating sandboxes: `sbx secret set github`. Give a Personal Access Token (PAT, classic) from a *different* user, for the agents to use. Typically needs the 'repo' and 'read:org' scopes, and eventually 'workflow' if there are GitHub Actions to manage.
 
-Add a codex token through oauth: `sbx secret set openai --oauth`
+Add a codex token through oauth: `sbx secret set openai --oauth`. If doing the oauth flow on a remote machine, do it in a SSH session with forwarding like so `ssh -o ExitOnForwardFailure=yes -L 1455:localhost:1455 user@server` so that the oauth callback can land properly (replace 1455 with whatever port you can observe being set in the callback URL)
 
 Add a claude token: `sbx secret set anthropic`. This one doesn't support oauth, instead use `claude setup-token` on a logged in claude code and put the token you obtain as secret.
 
@@ -61,26 +61,32 @@ sbx policy allow network --sandbox SANDBOX_NAME --protocol udp "**"
 
 Replace `AGENT_NAME` with `codex` or `claude`.
 
-Port forwarding with `--publish` and the UDP allow line are there to help Tailscale be efficient.
-
 Then open an interactive shell with `sbx exec -it SANDBOX_NAME zsh`. Then run `sudo tailscale up` to make the sandbox join the tailnet, then simply ssh into the sandbox on port 2222.
 
-### Mounting directories (optional)
+Port forwarding with `--publish` and the UDP allow line are there to help Tailscale be efficient. Verify that is it working with `tailscale ping SANDBOX_NAME` and confirming no DERP relay is used.
 
-```
-# Mount a host directory at the same path inside the sandbox
-sbx mount SANDBOX_NAME /home/paps/a-folder
-# Or choose a destination inside the sandbox (read-write by default)
-sbx mount SANDBOX_NAME /home/paps/a-folder:/workspace/data
-# Or mount it read-only
-sbx mount SANDBOX_NAME /home/paps/a-folder:/workspace/data:ro
+### Finishing setup touches
+
+```sh
+sudo dpkg-reconfigure tzdata # set the desired timezone
+sudo apt autoremove
+sudo tailscale set --operator=$USER # let the non-root user manipulate tailscale freely
 ```
 
+If the sandbox package manager provides outdated neovim, ask the agent the following: *"Remove outdated neovim and neovim-runtime apt packages in favor of a recent compatible .deb you can find in the neovim/neovim-releases official repository. Do a dry run pass first and wait for me to confirm before removal and install."*
+
+### Mounting directories (optional, but recommended for `bay`)
+
+```sh
+# How to mount a directory:
+sbx mount SANDBOX_NAME ~/atelier/bay:/home/agent/bay
+# How to mount a read-only directory:
+sbx mount SANDBOX_NAME ~/a-folder:/workspace/data:ro
 ```
-# Undo the same-path mount
-sbx umount SANDBOX_NAME /home/paps/a-folder
-# Undo the custom-destination mount—including the read-only example
-sbx umount SANDBOX_NAME /home/paps/a-folder:/workspace/data
+
+```sh
+# How to un-mount:
+sbx umount SANDBOX_NAME ~/a-folder:/home/agent/a-folder
 ```
 
 ### Updating the "boot script"
