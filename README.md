@@ -1,67 +1,96 @@
 # Atelier
 
-I sometimes use this repo (and dev container) as a "root directory" in which to clone any number of other repos for AI agents to work on while isolated in a containerized environment, locally or remotely.
-
-When using the dev container, repos are meant to be cloned in the `bay` directory.
-
-Tailscale and some harnesses come pre-installed, so once the `atelier` container is created/recreated, users only have to `sudo tailscale up`, start the harnesses of their choice to log in, and clone repos in `bay`. The container is then ready for isolated work through SSH, whether it is `tmux`, VSCode Agent Window, or any other ADE-type software.
+This repo stores useful configuration for creating sandboxes for agents. I find that I generally only need about ~one sandbox per machine, into which any number of projects can be worked on simultaneously.
 
 ![Atelier](docs/atelier.jpg)
 
-## Docker Sandboxes on headless Linux
+## Dev containers
 
-[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/install/) supports Ubuntu 24.04+ with KVM and membership in the `kvm` group; Docker Desktop and Docker Engine are not required on the host. Checked against stable `sbx v0.45.1` on 2026-09-25.
+When using a dev container, repos are meant to be cloned in the `bay` directory.
 
-For a headless host, sign in with a Docker access token through stdin:
+Tailscale and some harnesses come pre-installed, so once the container is created/recreated, users only have to `sudo tailscale up`, start the harnesses of their choice to log in, and clone repos in `bay`. The container is then ready for isolated work through SSH, whether it is `tmux`, VSCode Agents window, or any other ADE-type software.
 
+## Docker Sandboxes
+
+### Install and setup
+
+Install from https://docs.docker.com/ai/sandboxes/install/
+
+For Debian, install a `.deb` from https://github.com/docker/sbx-releases/releases (note: on Debian, `/usr/local/sbin:/usr/sbin:/sbin` need to be in `$PATH` to have `sbx daemon` work)
+
+Release notes here: https://github.com/docker/sbx-releases/releases
+
+Then run `sudo usermod -aG kvm $USER` and `newgrp kvm`
+
+Then run the following (not root, not sudo):
 ```sh
 sbx login
-sbx policy init allow-all # One-time setup if no network preset is configured.
+
+# Note: For Debian, it seems the daemon doesn't go in the background, which is also fine
+sbx daemon start # or 'restart'
+
+sbx policy init allow-all # Let's do that for now, might restrict more later
+# Allow this for tailscale (see below)
+sbx settings set platform.allowExperimentalFeatures true
+sbx settings set feature.udp-egress true
+
 sbx settings set ssh.agentForwardingEnabled false # By default, `sbx` forwards the host's SSH agent into sandboxes...
-sbx daemon restart # Applies the agent forwarding setting.
+
+# Restart the daemon for good measure, to take into account settings changes above
+sbx daemon restart # Note: For Debian / foreground daemon, stop and start it manually
+
 sbx diagnostics
 ```
 
-The kit sets up git as the account of a stored GitHub secret, so store one before creating the sandbox: `sbx secret set github` (add `--sandbox atelier` to use it for this sandbox only).
+### Loading secrets
 
-From this repository's root, create the VM without attaching:
+(`sbx` supports targeting a specific sandbox for secrets, but we'll just use global secrets for now)
+
+The kit sets up git as the account of a stored GitHub secret, so store one before creating sandboxes: `sbx secret set github`. Give a Personal Access Token (PAT, classic) from a *different* user, for the agents to use. Typically needs the 'repo' and 'read:org' scopes, and eventually 'workflow' if there are GitHub Actions to manage.
+
+Add a codex token through oauth: `sbx secret set openai --oauth`
+
+Add a claude token: `sbx secret set anthropic`. This one doesn't support oauth, instead use `claude setup-token` on a logged in claude code and put the token you obtain as secret.
+
+### Setting up a sandbox
 
 ```sh
-sbx create --name atelier --kit ./atelier-sbx-kit --publish 0.0.0.0:41643:41643/udp4 codex
+sbx create --name SANDBOX_NAME --kit ./atelier-sbx-kit --publish 0.0.0.0:41643:41643/udp4 AGENT_NAME
+sbx policy allow network --sandbox SANDBOX_NAME --protocol udp "**"
 ```
 
-For direct Tailscale connections, enable experimental outbound UDP and explicitly allow it for this sandbox. In `sbx 0.45.1`, the `allow-all` preset above only grants TCP; publishing a UDP port alone does not enable outbound UDP.
+Replace `AGENT_NAME` with `codex` or `claude`.
 
-```sh
-sbx settings set platform.allowExperimentalFeatures true
-sbx settings set feature.udp-egress true
-sbx policy allow network --sandbox atelier --protocol udp "**"
+Port forwarding with `--publish` and the UDP allow line are there to help Tailscale be efficient.
+
+Then open an interactive shell with `sbx exec -it SANDBOX_NAME zsh`. Then run `sudo tailscale up` to make the sandbox join the tailnet, then simply ssh into the sandbox on port 2222.
+
+### Mounting directories (optional)
+
+```
+# Mount a host directory at the same path inside the sandbox
+sbx mount SANDBOX_NAME /home/paps/a-folder
+# Or choose a destination inside the sandbox (read-write by default)
+sbx mount SANDBOX_NAME /home/paps/a-folder:/workspace/data
+# Or mount it read-only
+sbx mount SANDBOX_NAME /home/paps/a-folder:/workspace/data:ro
 ```
 
-For an interactive shell, use `sbx exec -it atelier zsh`.
+```
+# Undo the same-path mount
+sbx umount SANDBOX_NAME /home/paps/a-folder
+# Undo the custom-destination mount—including the read-only example
+sbx umount SANDBOX_NAME /home/paps/a-folder:/workspace/data
+```
 
-No host workspace is mounted. Docker's built-in Codex sandbox manages Codex installation and authentication. The local v2 mixin in [`atelier-sbx-kit`](atelier-sbx-kit/spec.yaml) installs dotfiles, Tailscale, and OpenSSH server at creation, in that order, then wires the sandbox environment into zsh and SSH logins (see below). The dotfiles installer already updates package lists. Startup work lives in one script, [`setup.sh`](atelier-sbx-kit/files/home/.local/share/atelier-sbx-kit/setup.sh), which the kit copies into the sandbox. The kit does not declare network permissions; use the host's `allow-all` preset and the UDP rule above for open outbound access. Explicit deny rules and organization policies still take precedence; see [Docker's network policy documentation](https://docs.docker.com/ai/sandboxes/governance/access-controls/local/).
+### Updating the "boot script"
 
-On every sandbox start, the kit's single background startup task runs `setup.sh` as root, which starts OpenSSH and Tailscale, skipping daemons that are already running. It creates runtime directories and any missing SSH host keys. Tailscale uses userspace networking and stores its identity in `/var/lib/tailscale/tailscaled.state`, so login survives restarts of the same sandbox. Authenticate once from its shell with `sudo tailscale up`.
-
-`setup.sh` also writes the SSH configuration. OpenSSH listens on port **2222**, with password authentication, root login, and agent and X11 forwarding disabled, matching the devcontainer. The `agent` user has passwordless sudo, so code inside the sandbox could re-enable forwarding; disable it for this host in your SSH client configuration instead, with `ForwardAgent no` and `ForwardX11 no`.
-
-If `/home/agent/.ssh/authorized_keys` is missing, startup downloads the public keys from `https://github.com/paps.keys` and installs them for the `agent` user. Existing authorized keys are left intact. Both daemons send their output through the sandbox's startup logging.
-
-`sbx` gives its environment only to processes it starts: proxy settings, CA bundle paths, credential sentinels that the host proxy swaps for real secrets, and a `PATH` that includes Codex. OpenSSH starts each login with a clean environment instead. Until `sbx` handles this, the kit works around it. Before starting OpenSSH, `setup.sh` snapshots the container environment from PID 1 into `/run/ssh-login-env.sh`, leaving out per-login variables and SSH agent sockets. `/etc/sandbox-persistent.sh`, which Docker's template loads in bash, imports the snapshot into logins that lack `SANDBOX_ID`; the kit also loads that file from `/etc/zsh/zshenv`. SSH sessions, including `ssh host command`, then match `sbx exec`. The snapshot is rewritten on every sandbox start. In both `spec.yaml`'s install step and `setup.sh`, this workaround sits between `BEGIN ssh-env workaround` and `END ssh-env workaround` comments, and the call to it in `setup.sh` is marked `ssh-env workaround`.
-
-The startup task starts the daemons but does not restart them if they crash. Remote access routing still needs configuration; starting both daemons alone does not complete remote access setup. Recreating the sandbox loses its Tailscale identity and SSH host keys along with its other internal files.
-
-Codex uses the host's stored OpenAI OAuth secret through the sandbox proxy. If you haven't stored it yet, run `sbx secret set openai --oauth` on the host. The local kit does not declare credentials or write Codex configuration.
-
-Optionally validate the kit with `sbx kit validate ./atelier-sbx-kit`. [Kits](https://docs.docker.com/ai/sandboxes/customize/kit-reference/) are experimental. Applying kit changes requires recreating the sandbox; doing so discards its installed state and any files stored inside it.
-
-The exception is `setup.sh`. A sandbox keeps the copy of `setup.sh` made at creation and runs it on every start, so to update startup behavior, copy the new script in and restart the sandbox:
+A sandbox keeps the copy of `setup.sh` made at creation and runs it on every start, so to update startup behavior, copy the new script in and restart the sandbox:
 
 ```sh
-sbx cp atelier-sbx-kit/files/home/.local/share/atelier-sbx-kit/setup.sh atelier:/home/agent/.local/share/atelier-sbx-kit/setup.sh
-sbx stop atelier
-sbx exec -it atelier zsh
+sbx cp atelier-sbx-kit/files/home/.local/share/atelier-sbx-kit/setup.sh SANDBOX_NAME:/home/agent/.local/share/atelier-sbx-kit/setup.sh
+sbx stop SANDBOX_NAME
+sbx exec -it SANDBOX_NAME zsh # or any other method of your choice to start the sandbox
 ```
 
 Changes to `spec.yaml`, including its install step, still require recreating the sandbox.
