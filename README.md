@@ -39,7 +39,7 @@ sbx settings set ssh.agentForwardingEnabled false # By default, `sbx` forwards t
 # Restart the daemon for good measure, to take into account settings changes above
 sbx daemon restart # Note: For Debian / foreground daemon, stop and start it manually
 
-sbx diagnostics
+sbx diagnose
 ```
 
 ### Loading secrets
@@ -63,7 +63,7 @@ Replace `AGENT_NAME` with `codex` or `claude`.
 
 Then open an interactive shell with `sbx exec -it SANDBOX_NAME zsh`. Then run `sudo tailscale up` to make the sandbox join the tailnet, then simply ssh into the sandbox on port 2222.
 
-Port forwarding with `--publish` and the UDP allow line are there to help Tailscale be efficient. Verify that is it working with `tailscale ping SANDBOX_NAME` and confirming no DERP relay is used.
+Port forwarding with `--publish` and the UDP allow line are there to help Tailscale be efficient. Verify that is it working with `tailscale ping SANDBOX_NAME` and confirming no DERP relay is used. Sometimes it takes a while to take effect, but after a few minutes direct access to the machine (no relay) can be achieved, I don't know why it does that.
 
 ### Finishing setup touches
 
@@ -74,6 +74,10 @@ sudo tailscale set --operator=$USER # let the non-root user manipulate tailscale
 ```
 
 If the sandbox package manager provides outdated neovim, ask the agent the following: *"Remove outdated neovim and neovim-runtime apt packages in favor of a recent compatible .deb you can find in the neovim/neovim-releases official repository. Do a dry run pass first and wait for me to confirm before removal and install."*
+
+Also, upgrade the agent harness you're using. It's not necesseraly up to date when freshly pulled from docker sandboxes images.
+
+And choose a different color for tmux for the sandbox: `nvim ~/.tmux.local.conf` (use a variation of the two example lines at the end of [tmux.conf](https://github.com/paps/dotfiles/blob/master/tmux/tmux.conf))
 
 ### Mounting directories (optional, but recommended for `bay`)
 

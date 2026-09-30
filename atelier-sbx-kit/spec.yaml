@@ -22,6 +22,14 @@ setup:
         git_email=$(gh api user --jq '"\(.id)+\(.login)@users.noreply.github.com"')
         git config --global user.name "$git_name"
         git config --global user.email "$git_email"
+
+        # We're going to use HTTPS with a PAT token (through gh) instead of SSH keys
+        # but we don't want to mess with the already configured repo remote if we work in a mounted directory
+        # (which would affect the host).
+        # So we use the git config trick below:
+        git config --global url."https://github.com/".insteadOf git@github.com:
+        git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/
+
         curl -fsSL https://tailscale.com/install.sh | sh
         sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server
 
