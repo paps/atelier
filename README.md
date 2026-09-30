@@ -90,7 +90,7 @@ sbx mount SANDBOX_NAME ~/a-folder:/workspace/data:ro
 
 ```sh
 # How to un-mount:
-sbx umount SANDBOX_NAME ~/a-folder:/home/agent/a-folder
+sbx umount SANDBOX_NAME ~/a-folder:/workspace/data:ro
 ```
 
 ### Updating the "boot script"
