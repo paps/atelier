@@ -55,11 +55,13 @@ Add a claude token: `sbx secret set anthropic`. This one doesn't support oauth, 
 ### Setting up a sandbox
 
 ```sh
-sbx create --name SANDBOX_NAME --kit ./atelier-sbx-kit --publish 0.0.0.0:41643:41643/udp4 AGENT_NAME
+sbx run --detached --name SANDBOX_NAME --kit ./atelier-sbx-kit --publish 0.0.0.0:41643:41643/udp4 AGENT_NAME
 sbx policy allow network --sandbox SANDBOX_NAME --protocol udp "**"
 ```
 
-Replace `AGENT_NAME` with `codex` or `claude`.
+Replace `AGENT_NAME` with `codex` or `claude` or another sandbox image name.
+
+We use `sbx run --detached` instead of `sbx create` to prevent the sandbox from being automatically stopped when sbx detects no active session running in it.
 
 Then open an interactive shell with `sbx exec -it SANDBOX_NAME zsh`. Then run `sudo tailscale up` to make the sandbox join the tailnet, then simply ssh into the sandbox on port 2222.
 
