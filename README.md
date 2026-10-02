@@ -111,3 +111,25 @@ sbx exec -it SANDBOX_NAME zsh # or any other method of your choice to start the 
 ```
 
 Changes to `spec.yaml`, including its install step, still require recreating the sandbox.
+
+## OpenCode
+
+Install [OpenCode](https://opencode.ai) normally inside the sandbox. It stores credentials and sessions in its own SQLite database.
+
+Ask the agent in your working harness (e.g. Codex or Claude) to prepare `/tmp/opencode-auth.json` in OpenCode's `auth import` format, matching its provider and authentication setup. It **must use the sandbox's placeholder tokens**: the proxy injects the real credentials. Legacy `auth.json` files need converting to the import format.
+
+```sh
+opencode auth import /tmp/opencode-auth.json
+opencode auth switch PROVIDER CREDENTIAL_ID # use the values from the generated file
+```
+
+With the sandbox connected to Tailscale, start the web server and expose it to your tailnet:
+
+```sh
+opencode service start # includes the web server
+opencode service status # get the local URL for the next command
+sudo tailscale serve --bg http://127.0.0.1:49374 # replace with that URL
+opencode pair --url https://SANDBOX.YOUR-TAILNET.ts.net # use Tailscale's printed URL
+```
+
+Open the pairing link on a device connected to the same tailnet. Links are single-use and expire after five minutes; browser logins last 30 days. Use `tailscale serve status` to check the web proxy.
