@@ -86,6 +86,8 @@ Also, upgrade the agent harness you're using. It's not necesseraly up to date wh
 
 And choose a different color for tmux for the sandbox: `nvim ~/.tmux.local.conf` (use a variation of the two example lines at the end of [tmux.conf](https://github.com/paps/dotfiles/blob/master/tmux/tmux.conf))
 
+If working with Node, ask the agent something like: *"Update this system's Node system-wide to 26 using nodesource apt repositories"*
+
 ### Mounting directories (optional, but recommended for `bay`)
 
 ```sh
