@@ -34,6 +34,7 @@ sbx daemon start # or 'restart'
 sbx policy reset # Interactively configure network access. Just use 'Open' for now
 sbx settings set diagnostics.autoUpload no # disable a form of telemetry
 sbx settings set clipboard.imagePaste false # keep this disabled for now (because it doesn't work at the time of writing — will look into it in the future)
+
 # Allow this for tailscale (see below)
 sbx settings set platform.allowExperimentalFeatures true
 sbx settings set feature.udp-egress true
