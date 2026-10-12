@@ -88,6 +88,8 @@ And choose a different color for tmux for the sandbox: `nvim ~/.tmux.local.conf`
 
 If working with Node, ask the agent something like: *"Update this system's Node system-wide to 26 using nodesource apt repositories"*
 
+Also, agents typically use the `python` command, so running `sudo apt install python-is-python3` could save quite a lot of tokens over time.
+
 ### Mounting directories (optional, but recommended for `bay`)
 
 ```sh
