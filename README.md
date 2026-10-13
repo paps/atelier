@@ -90,6 +90,8 @@ If working with Node, ask the agent something like: *"Update this system's Node 
 
 Also, agents typically use the `python` command, so running `sudo apt install python-is-python3` could save quite a lot of tokens over time.
 
+If working with postgresql, this is useful: `sudo apt install postgresql-client`
+
 ### Mounting directories (optional, but recommended for `bay`)
 
 ```sh
